@@ -1,0 +1,391 @@
+// ==UserScript==
+// @name         AutoClick SMMKingdom v2.5 Voice Notification
+// @namespace    http://tampermonkey.net/
+// @version      2.5
+// @description  AutoClick Dashboard + Tasker page miaraka amin'ny voice notification "Task Taken"
+// @match       ://smmkingdom.com/tasker/editor/dashboard/
+// @match       ://smmkingdom.com/tasker/order/
+// @grant        none
+// ==/UserScript==
+
+(function(){
+    'use strict';
+
+    /*************** Settings ******************/
+    let taskerSpeed = parseInt(localStorage.getItem("autoclick_taskerSpeed")) || 100;
+    let dashboardSpeed = parseInt(localStorage.getItem("autoclick_dashboardSpeed")) || 100;
+    let refreshDelay = parseInt(localStorage.getItem("autoclick_refreshDelay")) || 700;
+    let SCRIPT_PAUSED = false;
+
+    const isDashboard = window.location.href.includes("/dashboard/");
+    const isTaskerPage = window.location.href.includes("/tasker/order/");
+
+    /*************** Popup UI ******************/
+    const popup = document.createElement("div");
+    Object.assign(popup.style,{
+        position:"fixed",
+        bottom:"15px",
+        left:"15px",
+        background:"#111",
+        color:"#00ff99",
+        padding:"8px 12px",
+        fontSize:"13px",
+        borderRadius:"8px",
+        zIndex:"999999",
+        fontFamily:"monospace",
+        lineHeight:"1.4"
+    });
+
+    document.body.appendChild(popup);
+
+    const textDiv = document.createElement("div");
+    textDiv.innerHTML="⚡ AutoClick running...";
+    popup.appendChild(textDiv);
+
+    /*************** Dashboard Speed ******************/
+    const labelDash = document.createElement("label");
+    labelDash.innerText="Dashboard Pending Speed:";
+    Object.assign(labelDash.style,{
+        display:"block",
+        fontSize:"12px",
+        marginTop:"6px"
+    });
+
+    popup.appendChild(labelDash);
+
+    const selectDash = document.createElement("select");
+
+    [50,100,200,300,500].forEach(ms=>{
+        const opt=document.createElement("option");
+        opt.value=ms;
+        opt.textContent=ms+"ms";
+
+        if(ms===dashboardSpeed){
+            opt.selected=true;
+        }
+
+        selectDash.appendChild(opt);
+    });
+
+    selectDash.addEventListener("change",()=>{
+        dashboardSpeed=parseInt(selectDash.value);
+        localStorage.setItem("autoclick_dashboardSpeed",dashboardSpeed);
+    });
+
+    popup.appendChild(selectDash);
+
+    /*************** Tasker Speed ******************/
+    const labelTask = document.createElement("label");
+    labelTask.innerText="I'LL TAKE Speed:";
+
+    Object.assign(labelTask.style,{
+        display:"block",
+        fontSize:"12px",
+        marginTop:"6px"
+    });
+
+    popup.appendChild(labelTask);
+
+    const selectTask=document.createElement("select");
+
+    [100,200,300,500,1000].forEach(ms=>{
+        const opt=document.createElement("option");
+
+        opt.value=ms;
+        opt.textContent=ms+"ms";
+
+        if(ms===taskerSpeed){
+            opt.selected=true;
+        }
+
+        selectTask.appendChild(opt);
+    });
+
+    selectTask.addEventListener("change",()=>{
+        taskerSpeed=parseInt(selectTask.value);
+        localStorage.setItem("autoclick_taskerSpeed",taskerSpeed);
+    });
+
+    popup.appendChild(selectTask);
+
+    /*************** Refresh Delay ******************/
+    const labelRefresh = document.createElement("label");
+    labelRefresh.innerText="Auto-Refresh Delay:";
+
+    Object.assign(labelRefresh.style,{
+        display:"block",
+        fontSize:"12px",
+        marginTop:"6px"
+    });
+
+    popup.appendChild(labelRefresh);
+
+    const selectRefresh=document.createElement("select");
+
+    [700,1000,1300].forEach(ms=>{
+        const opt=document.createElement("option");
+
+        opt.value=ms;
+        opt.textContent=ms+" ms";
+
+        if(ms===refreshDelay){
+            opt.selected=true;
+        }
+
+        selectRefresh.appendChild(opt);
+    });
+
+    selectRefresh.addEventListener("change",()=>{
+        refreshDelay=parseInt(selectRefresh.value);
+        localStorage.setItem("autoclick_refreshDelay",refreshDelay);
+    });
+
+    popup.appendChild(selectRefresh);
+
+    /*************** Pause / Resume ******************/
+    const pauseBtn=document.createElement("button");
+
+    pauseBtn.innerText="⏸ Pause";
+
+    Object.assign(pauseBtn.style,{
+        marginTop:"6px",
+        fontSize:"12px",
+        padding:"2px 6px",
+        borderRadius:"4px",
+        cursor:"pointer"
+    });
+
+    popup.appendChild(pauseBtn);
+
+    pauseBtn.addEventListener("click",()=>{
+
+        SCRIPT_PAUSED=!SCRIPT_PAUSED;
+
+        if(SCRIPT_PAUSED){
+            pauseBtn.innerText="▶ Resume";
+            textDiv.innerHTML="⏸ Paused";
+        }else{
+            pauseBtn.innerText="⏸ Pause";
+            textDiv.innerHTML="⚡ AutoClick running...";
+        }
+    });
+
+    /*************** Progress Bar ******************/
+    const progressDiv=document.createElement("div");
+
+    progressDiv.style.marginTop="6px";
+
+    progressDiv.innerHTML=`
+        <div style="width:100%;background:#444;height:8px;border-radius:4px">
+            <div id="progress-bar"
+                 style="width:0%;height:100%;background:#0f0;border-radius:4px">
+            </div>
+        </div>
+    `;
+
+    popup.appendChild(progressDiv);
+
+    const progressBar=document.getElementById("progress-bar");
+
+    /*************** Dashboard ******************/
+    if(isDashboard){
+
+        let isWaiting=false;
+        const waitAfterClick=5000;
+
+        async function dashboardCycle(){
+
+            if(SCRIPT_PAUSED || isWaiting){
+                setTimeout(dashboardCycle,refreshDelay);
+                return;
+            }
+
+            const startTime=Date.now();
+
+            const progInterval=setInterval(()=>{
+
+                if(SCRIPT_PAUSED || isWaiting){
+                    progressBar.style.width="0%";
+                    clearInterval(progInterval);
+                    return;
+                }
+
+                const percent=Math.min(
+                    100,
+                    ((Date.now()-startTime)/refreshDelay)*100
+                );
+
+                progressBar.style.width=percent+"%";
+
+            },20);
+
+            try{
+
+                const resp=await fetch(window.location.href,{
+                    cache:"no-store"
+                });
+
+                const html=await resp.text();
+
+                const doc=new DOMParser().parseFromString(html,'text/html');
+
+                const newPanel=doc.querySelector('.panel');
+
+                if(newPanel){
+                    document.querySelector('.panel').innerHTML=newPanel.innerHTML;
+                }
+
+            }catch(e){
+                console.log("Fetch dashboard failed:",e);
+            }
+
+            const links=Array.from(document.querySelectorAll("a"))
+                .filter(l=>l.innerText.toLowerCase().includes("pending"));
+
+            if(links.length>0){
+
+                let maxLink=null;
+                let maxValue=-1;
+
+                links.forEach(l=>{
+
+                    const num=parseInt(l.innerText)||0;
+
+                    if(num>maxValue){
+                        maxValue=num;
+                        maxLink=l;
+                    }else if(num===maxValue){
+                        maxLink=l;
+                    }
+                });
+
+                if(maxLink){
+
+                    maxLink.click();
+
+                    isWaiting=true;
+
+                    setTimeout(()=>{
+                        isWaiting=false;
+                    },waitAfterClick);
+                }
+            }
+
+            clearInterval(progInterval);
+
+            progressBar.style.width="100%";
+
+            setTimeout(dashboardCycle,refreshDelay);
+        }
+
+        dashboardCycle();
+    }
+
+    /*************** Tasker Page ******************/
+    if(isTaskerPage){
+
+        let buttonClicked=false;
+        let hasClickedBack=false;
+        let taskerInterval=null;
+
+        function speakTaskTaken(){
+
+            try{
+
+                const msg = new SpeechSynthesisUtterance("Task Taken");
+
+                msg.volume = 1;
+                msg.rate = 1;
+                msg.pitch = 1;
+
+                const voices = speechSynthesis.getVoices();
+
+                const englishVoice = voices.find(v =>
+                    v.lang.toLowerCase().includes("en")
+                );
+
+                if(englishVoice){
+                    msg.voice = englishVoice;
+                }
+
+                speechSynthesis.speak(msg);
+
+            }catch(e){
+                console.log("Voice notification error:", e);
+            }
+        }
+
+        function startTaskerInterval(){
+
+            taskerInterval=setInterval(()=>{
+
+                if(buttonClicked || hasClickedBack){
+                    return;
+                }
+
+                const buttons=document.querySelectorAll("button,a");
+
+                let illTakeBtn=null;
+                let backBtn=null;
+
+                buttons.forEach(btn=>{
+
+                    const t=btn.innerText.trim().toUpperCase();
+
+                    if(t.includes("I'LL TAKE")){
+                        illTakeBtn=btn;
+                    }
+
+                    if(t.includes("BACK")){
+                        backBtn=btn;
+                    }
+                });
+
+                /*************** I'LL TAKE ******************/
+                if(illTakeBtn){
+
+                    // PRIORITY = CLICK FIRST
+                    illTakeBtn.click();
+
+                    // Stop interval immediately
+                    buttonClicked=true;
+
+                    clearInterval(taskerInterval);
+
+                    // Voice notification in background
+                    setTimeout(()=>{
+                        speakTaskTaken();
+                    },0);
+                }
+
+                /*************** BACK ******************/
+                else if(backBtn){
+
+                    backBtn.click();
+
+                    hasClickedBack=true;
+
+                    clearInterval(taskerInterval);
+                }
+
+            },taskerSpeed);
+        }
+
+        function restartTaskerInterval(){
+
+            if(taskerInterval){
+                clearInterval(taskerInterval);
+            }
+
+            buttonClicked=false;
+            hasClickedBack=false;
+
+            startTaskerInterval();
+        }
+
+        startTaskerInterval();
+
+        window.addEventListener("focus",restartTaskerInterval);
+    }
+
+})();
